@@ -52,7 +52,7 @@ fn compile(file_name: PathBuf) {
     });
 
     let mut compilation_engine =
-        CompilationEngine::build(tokenizer, PathBuf::from(format!("{file_name}.xml")))
+        CompilationEngine::build(tokenizer, PathBuf::from(format!("{file_name}.vm")))
             .unwrap_or_else(|err| {
                 eprintln!("ERROR: {}: {}", file_path, err);
                 std::process::exit(2);

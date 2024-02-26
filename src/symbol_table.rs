@@ -50,7 +50,7 @@ impl SymbolTable {
     }
 
     pub fn define(&mut self, name: &str, _type: &str, kind: SegmentKind) {
-        let index = *self.index_map.get(&kind).unwrap();
+        let index = self.var_count(kind);
         let symbol = Symbol {
             _type: String::from(_type),
             index,
@@ -58,6 +58,10 @@ impl SymbolTable {
         };
         self.map.insert(String::from(name), symbol);
         self.index_map.insert(kind, index + 1);
+    }
+
+    pub fn var_count(&self, kind: SegmentKind) -> usize {
+        *self.index_map.get(&kind).unwrap()
     }
 
     pub fn kind_of(&self, name: &str) -> Option<SegmentKind> {
