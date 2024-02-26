@@ -1,7 +1,7 @@
 use std::{io::Error, iter::Peekable, path::PathBuf};
 
 use crate::{
-    symbol_table::{SegmentKind, SymbolTable},
+    symbol_table::{Category, SymbolTable},
     tokenizer::Token,
     vm_writer::{Arithmetic, Segment, VmWriter},
 };
@@ -43,58 +43,39 @@ where
 
     fn process(&mut self, token: Token) {
         match self.tokenizer.next() {
-            Some(current_token) if current_token == token => {
-                println!("{current_token}");
-            }
-            Some(_) => println!("error: syntax error"),
+            Some(current_token) if current_token == token => return,
             None => return,
+            Some(_) => println!("error: syntax error"),
         }
     }
 
     pub fn compile_class(&mut self) {
-        println!("<class>");
         // parse class
         self.process(Token::Keyword("class"));
 
         // parse className
         match self.tokenizer.next() {
-            Some(Token::Identifier(class_name)) => {
-                println!("<identifier>");
-                println!("<name>{class_name}</name>");
-                println!("<category>class</category>");
-                println!("<usage>declared</usage>");
-                println!("</identifier>");
-                self.class_name.push_str(class_name)
-            }
+            Some(Token::Identifier(class_name)) => self.class_name.push_str(class_name),
             _ => println!("error: syntax error"),
         }
 
         // parse body
         self.process(Token::Symbol('{'));
-        while let Some(token) = self.tokenizer.peek() {
-            match *token {
-                Token::Keyword("static" | "field") => self.compile_class_var_dec(),
-                _ => break,
-            }
+        while let Some(Token::Keyword("static" | "field")) = self.tokenizer.peek() {
+            self.compile_class_var_dec();
         }
-        while let Some(token) = self.tokenizer.peek() {
-            match *token {
-                Token::Keyword("constructor" | "function" | "method") => self.compile_subroutine(),
-                _ => break,
-            }
+        while let Some(Token::Keyword("constructor" | "function" | "method")) =
+            self.tokenizer.peek()
+        {
+            self.compile_subroutine();
         }
         self.process(Token::Symbol('}'));
-        println!("</class>");
     }
 
     pub fn compile_class_var_dec(&mut self) {
-        println!("<classVarDec>");
         // parse static | field
         let category = match self.tokenizer.next() {
-            Some(t @ Token::Keyword(k @ ("static" | "field"))) => {
-                println!("{t}");
-                Some(k)
-            }
+            Some(Token::Keyword(k @ ("static" | "field"))) => Some(k),
             _ => {
                 println!("error: syntax error");
                 None
@@ -103,8 +84,7 @@ where
 
         // parse type
         let _type = match self.tokenizer.next() {
-            Some(t @ (Token::Keyword(k @ ("int" | "char" | "boolean")) | Token::Identifier(k))) => {
-                println!("{t}");
+            Some(Token::Keyword(k @ ("int" | "char" | "boolean")) | Token::Identifier(k)) => {
                 Some(k)
             }
             _ => {
@@ -116,17 +96,11 @@ where
         // parse varName
         match self.tokenizer.next() {
             Some(Token::Identifier(var_name)) => {
-                let category = category.unwrap(); // ignore error handling for now
-                let _type = _type.unwrap();
-                let kind = get_segment_kind(category).unwrap();
-                self.class_symbol_table.define(var_name, _type, kind);
-                let index = self.class_symbol_table.index_of(var_name).unwrap();
-                println!("<identifier>");
-                println!("<name>{var_name}</name>");
-                println!("<category>{category}</category>");
-                println!("<index>{index}</index>");
-                println!("<usage>declared</usage>");
-                println!("</identifier>");
+                let kind = category.and_then(|category| get_category(category));
+                let _type = _type;
+                if let (Some(kind), Some(_type)) = (kind, _type) {
+                    self.class_symbol_table.define(var_name, _type, kind);
+                }
             }
             _ => println!("error: syntax error"),
         }
@@ -135,144 +109,101 @@ where
         while let Some(token) = self.tokenizer.next() {
             match token {
                 Token::Symbol(',') => {
-                    println!("{}", token);
                     if let Some(Token::Identifier(var_name)) = self.tokenizer.next() {
-                        let category = category.unwrap(); // ignore error handling for now
-                        let _type = _type.unwrap();
-                        let kind = get_segment_kind(category).unwrap();
-                        self.class_symbol_table.define(var_name, _type, kind);
-                        let index = self.class_symbol_table.index_of(var_name).unwrap();
-                        println!("<identifier>");
-                        println!("<name>{var_name}</name>");
-                        println!("<category>{category}</category>");
-                        println!("<index>{index}</index>");
-                        println!("<usage>declared</usage>");
-                        println!("</identifier>");
+                        let kind = category.and_then(|category| get_category(category));
+                        let _type = _type;
+                        if let (Some(kind), Some(_type)) = (kind, _type) {
+                            self.class_symbol_table.define(var_name, _type, kind);
+                        }
                     } else {
                         println!("error: syntax error");
                     }
                 }
                 Token::Symbol(';') => {
-                    println!("{token}");
                     break;
                 }
-
                 _ => {
                     println!("error: syntax error");
                     break;
                 }
             }
         }
-
-        println!("</classVarDec>");
     }
 
     pub fn compile_subroutine(&mut self) {
-        println!("<subroutineDec>");
         self.subroutine_symbol_table.reset();
         self.subroutine_name.clear();
         self.subroutine_category.clear();
         self.subroutine_type.clear();
         // parse constructor | function | method
         match self.tokenizer.next() {
-            Some(k @ Token::Keyword(c @ ("constructor" | "function" | "method"))) => {
-                println!("{k}");
-                self.subroutine_category.push_str(c);
-                Some(c)
+            Some(Token::Keyword(c @ ("constructor" | "function" | "method"))) => {
+                self.subroutine_category.push_str(c)
             }
             _ => {
                 println!("error: syntax error");
-                None
             }
         };
         if self.subroutine_category == "method" {
             self.subroutine_symbol_table
-                .define("this", self.class_name.as_str(), SegmentKind::Arg);
+                .define("this", self.class_name.as_str(), Category::Arg);
         }
 
         // parse type
         match self.tokenizer.next() {
             Some(
-                t @ (Token::Keyword(_type @ ("void" | "int" | "char" | "boolean"))
-                | Token::Identifier(_type)),
-            ) => {
-                println!("{t}");
-                self.subroutine_type.push_str(_type);
-            }
+                Token::Keyword(_type @ ("void" | "int" | "char" | "boolean"))
+                | Token::Identifier(_type),
+            ) => self.subroutine_type.push_str(_type),
             _ => println!("error: syntax error"),
         }
 
         // parse subroutineName
         match self.tokenizer.next() {
-            Some(Token::Identifier(i)) => {
-                println!("<identifier>");
-                println!("<name>{i}</name>");
-                println!("<category>subroutine</category>");
-                println!("</identifier>");
-                self.subroutine_name.push_str(i);
-            }
-            _ => {
-                println!("error: syntax error");
-            }
+            Some(Token::Identifier(i)) => self.subroutine_name.push_str(i),
+            _ => println!("error: syntax error"),
         };
 
         self.process(Token::Symbol('('));
         self.compile_parameter_list();
         self.process(Token::Symbol(')'));
         self.compile_subroutine_body();
-
-        println!("</subroutineDec>");
     }
 
     pub fn compile_parameter_list(&mut self) {
         // peek if its )
         // if its not, process the parameter list
-        println!("<parameterList>");
         while let Some(token) = self.tokenizer.peek() {
             match *token {
                 Token::Symbol(')') => break,
                 Token::Keyword(t @ ("int" | "char" | "boolean")) | Token::Identifier(t) => {
                     // parse type and advance the iterator
-                    let token = self.tokenizer.next().unwrap();
-                    println!("{token}");
+                    self.tokenizer.next();
 
                     // parse varName
                     match self.tokenizer.next() {
                         Some(Token::Identifier(arg_name)) => {
                             self.subroutine_symbol_table
-                                .define(arg_name, t, SegmentKind::Arg);
-                            let index = self.subroutine_symbol_table.index_of(arg_name).unwrap();
-                            println!("<identifier>");
-                            println!("<name>{arg_name}</name>");
-                            println!("<category>arg</category>");
-                            println!("<index>{index}</index>");
-                            println!("<usage>declared</usage>");
-                            println!("</identifier>");
+                                .define(arg_name, t, Category::Arg)
                         }
                         _ => println!("error: syntax error"),
                     }
                 }
                 Token::Symbol(',') => {
-                    let token = self.tokenizer.next().unwrap();
-                    println!("{token}");
+                    self.tokenizer.next();
                 }
                 _ => println!("error: syntax error"),
             }
         }
-        println!("</parameterList>");
     }
 
     pub fn compile_subroutine_body(&mut self) {
-        println!("<subroutineBody>");
         self.process(Token::Symbol('{'));
         // loop
-        while let Some(token) = self.tokenizer.peek() {
-            match *token {
-                Token::Keyword("var") => self.compile_var_dec(),
-                _ => break,
-            }
+        while let Some(Token::Keyword("var")) = self.tokenizer.peek() {
+            self.compile_var_dec();
         }
-        let n_vars = self.subroutine_symbol_table.var_count(SegmentKind::Var);
+        let n_vars = self.subroutine_symbol_table.var_count(Category::Var);
         self.vm_writer.write_function(
             &format!("{}.{}", self.class_name, self.subroutine_name),
             n_vars,
@@ -281,7 +212,7 @@ where
         if self.subroutine_category == "constructor" {
             self.vm_writer.write_push(
                 Segment::CONSTANT,
-                self.class_symbol_table.var_count(SegmentKind::Field),
+                self.class_symbol_table.var_count(Category::Field),
             );
             self.vm_writer.write_call("Memory.alloc", 1);
             self.vm_writer.write_pop(Segment::POINTER, 0);
@@ -294,77 +225,35 @@ where
 
         self.compile_statements();
         self.process(Token::Symbol('}'));
-        println!("</subroutineBody>");
     }
 
     pub fn compile_var_dec(&mut self) {
-        println!("<varDec>");
         self.process(Token::Keyword("var"));
         // parse type
-        let _type = match self.tokenizer.next() {
-            Some(k @ (Token::Keyword(t @ ("int" | "char" | "boolean")) | Token::Identifier(t))) => {
-                println!("{k}");
-                Some(t)
-            }
-            _ => {
-                println!("error: syntax error");
-                None
-            }
-        };
-
-        // parse varName
-        match self.tokenizer.next() {
-            Some(Token::Identifier(var_name)) => {
-                let _type = _type.unwrap();
-                self.subroutine_symbol_table
-                    .define(var_name, _type, SegmentKind::Var);
-                let index = self.subroutine_symbol_table.index_of(var_name).unwrap();
-                println!("<identifier>");
-                println!("<name>{var_name}</name>");
-                println!("<category>var</category>");
-                println!("<index>{index}</index>");
-                println!("<usage>declared</usage>");
-                println!("</identifier>");
-            }
-            _ => println!("error: syntax error"),
-        }
-
-        // parse delimiter whether , or ;
-        while let Some(token) = self.tokenizer.next() {
-            match token {
-                Token::Symbol(',') => {
-                    println!("{}", token);
-                    if let Some(Token::Identifier(var_name)) = self.tokenizer.next() {
-                        let _type = _type.unwrap();
-                        self.subroutine_symbol_table
-                            .define(var_name, _type, SegmentKind::Var);
-                        let index = self.subroutine_symbol_table.index_of(var_name).unwrap();
-                        println!("<identifier>");
-                        println!("<name>{var_name}</name>");
-                        println!("<category>var</category>");
-                        println!("<index>{index}</index>");
-                        println!("<usage>declared</usage>");
-                        println!("</identifier>");
-                    } else {
-                        println!("error: syntax error");
-                    }
+        if let Some(
+            Token::Keyword(_type @ ("int" | "char" | "boolean")) | Token::Identifier(_type),
+        ) = self.tokenizer.next()
+        {
+            // parse varName
+            match self.tokenizer.next() {
+                Some(Token::Identifier(var_name)) => {
+                    self.subroutine_symbol_table
+                        .define(var_name, _type, Category::Var)
                 }
-                Token::Symbol(';') => {
-                    println!("{token}");
-                    break;
-                }
+                _ => println!("error: syntax error"),
+            }
 
-                _ => {
-                    println!("error: syntax error");
-                    break;
+            // parse delimiter whether , or ;
+            while let Some(Token::Symbol(',')) = self.tokenizer.next() {
+                if let Some(Token::Identifier(var_name)) = self.tokenizer.next() {
+                    self.subroutine_symbol_table
+                        .define(var_name, _type, Category::Var);
                 }
             }
         }
-        println!("</varDec>");
     }
 
     pub fn compile_statements(&mut self) {
-        println!("<statements>");
         while let Some(token) = self.tokenizer.peek() {
             match *token {
                 Token::Symbol('}') => break,
@@ -379,86 +268,51 @@ where
                 }
             }
         }
-        println!("</statements>");
     }
 
     pub fn compile_let(&mut self) {
-        println!("<letStatement>");
         // parse let
         self.process(Token::Keyword("let"));
 
         // parse varName
         match self.tokenizer.next() {
             Some(Token::Identifier(var_name)) => {
-                println!("<identifier>");
-                let category = self.kind_of(var_name);
+                let segment = self.kind_of(var_name).map(category_to_segment);
                 let _type = self.type_of(var_name);
                 let index = self.index_of(var_name);
-                println!("<name>{var_name}</name>");
-                if let Some(category) = category {
-                    println!("<category>{category}</category>");
-                } else {
-                    println!("<category>error</category>");
-                }
-                if let Some(_type) = _type {
-                    println!("<type>{_type}</type>");
-                } else {
-                    println!("<type>error</type>");
-                }
-                if let Some(index) = index {
-                    println!("<index>{index}</index>");
-                } else {
-                    println!("<index>error</index>");
-                }
-                println!("<usage>used</usage>");
-                println!("</identifier>");
-                let segment = category.map(|c| match c {
-                    SegmentKind::Static => Segment::STATIC,
-                    SegmentKind::Field => Segment::THIS,
-                    SegmentKind::Arg => Segment::ARGUMENT,
-                    SegmentKind::Var => Segment::LOCAL,
-                });
-                if let Some(Token::Symbol('[')) = self.tokenizer.peek() {
-                    if let (Some(segment), Some(index)) = (segment, index) {
+                if let (Some(segment), Some(index)) = (segment, index) {
+                    if let Some(Token::Symbol('[')) = self.tokenizer.peek() {
                         self.vm_writer.write_push(segment, index);
-                    }
-                    self.process(Token::Symbol('['));
-                    self.compile_expression();
-                    self.vm_writer.write_arithmetic(Arithmetic::ADD);
-                    self.process(Token::Symbol(']'));
+                        self.process(Token::Symbol('['));
+                        self.compile_expression();
+                        self.vm_writer.write_arithmetic(Arithmetic::ADD);
+                        self.process(Token::Symbol(']'));
 
-                    self.process(Token::Symbol('='));
+                        self.process(Token::Symbol('='));
 
-                    self.compile_expression();
-                    self.vm_writer.write_pop(Segment::TEMP, 0);
-                    self.vm_writer.write_pop(Segment::POINTER, 1);
-                    self.vm_writer.write_push(Segment::TEMP, 0);
-                    self.vm_writer.write_pop(Segment::THAT, 0);
-                } else {
-                    self.process(Token::Symbol('='));
-
-                    self.compile_expression();
-
-                    if let (Some(segment), Some(index)) = (segment, index) {
+                        self.compile_expression();
+                        self.vm_writer.write_pop(Segment::TEMP, 0);
+                        // pops to arr + i
+                        self.vm_writer.write_pop(Segment::POINTER, 1);
+                        self.vm_writer.write_push(Segment::TEMP, 0);
+                        self.vm_writer.write_pop(Segment::THAT, 0);
+                    } else {
+                        self.process(Token::Symbol('='));
+                        self.compile_expression();
                         self.vm_writer.write_pop(segment, index);
                     }
                 }
-
                 self.process(Token::Symbol(';'));
             }
-            _ => {
-                println!("error: syntax error");
-            }
+            _ => println!("error: syntax error"),
         };
-
-        println!("</letStatement>");
     }
+
     pub fn compile_if(&mut self) {
         let else_label = &format!("{}L{}", self.class_name, self.control_counter);
         self.control_counter += 1;
         let exit_label = &format!("{}L{}", self.class_name, self.control_counter);
         self.control_counter += 1;
-        println!("<ifStatement>");
         // parse if
         self.process(Token::Keyword("if"));
 
@@ -482,15 +336,18 @@ where
             self.vm_writer.write_label(else_label);
         }
         self.vm_writer.write_label(exit_label);
-        println!("</ifStatement>");
+    }
+
+    fn generate_control_label(&mut self) -> String {
+        let label = format!("{}L{}", self.class_name, self.control_counter);
+        self.control_counter += 1;
+        label
     }
 
     pub fn compile_while(&mut self) {
-        let loop_label = &format!("{}L{}", self.class_name, self.control_counter);
+        let loop_label = &self.generate_control_label();
+        let exit_label = &self.generate_control_label();
         self.control_counter += 1;
-        let exit_label = &format!("{}L{}", self.class_name, self.control_counter);
-        self.control_counter += 1;
-        println!("<whileStatement>");
         // parse while
         self.process(Token::Keyword("while"));
         self.process(Token::Symbol('('));
@@ -505,24 +362,17 @@ where
         self.vm_writer.write_goto(loop_label);
         self.vm_writer.write_label(exit_label);
         self.process(Token::Symbol('}'));
-        println!("</whileStatement>");
     }
 
     pub fn compile_do(&mut self) {
-        println!("<doStatement>");
-
         // parse do
         self.process(Token::Keyword("do"));
         self.compile_term();
         self.vm_writer.write_pop(Segment::TEMP, 0);
         self.process(Token::Symbol(';'));
-
-        println!("</doStatement>");
     }
 
     pub fn compile_return(&mut self) {
-        println!("<returnStatement>");
-
         // parse return
         self.process(Token::Keyword("return"));
 
@@ -537,17 +387,14 @@ where
             self.vm_writer.write_push(Segment::CONSTANT, 0);
         }
         self.vm_writer.write_return();
-        println!("</returnStatement>");
     }
 
     pub fn compile_expression(&mut self) {
-        println!("<expression>");
         self.compile_term();
         while let Some(token) = self.tokenizer.peek() {
             match *token {
                 Token::Symbol('+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '=') => {
-                    if let Some(token @ Token::Symbol(op)) = self.tokenizer.next() {
-                        println!("{}", token);
+                    if let Some(Token::Symbol(op)) = self.tokenizer.next() {
                         self.compile_term();
                         match op {
                             '+' => self.vm_writer.write_arithmetic(Arithmetic::ADD),
@@ -566,90 +413,51 @@ where
                 _ => break,
             }
         }
-        println!("</expression>");
     }
 
     pub fn compile_term(&mut self) {
-        println!("<term>");
-        match self.tokenizer.peek() {
-            Some(Token::IntConstant(_)) => {
-                if let Some(t @ (Token::IntConstant(c))) = self.tokenizer.next() {
-                    self.vm_writer.write_push(Segment::CONSTANT, c);
-                    println!("{t}");
-                }
+        match self.tokenizer.next() {
+            Some(Token::IntConstant(c)) => {
+                self.vm_writer.write_push(Segment::CONSTANT, c);
             }
-            Some(Token::StringConst(_)) => {
-                if let Some(t @ (Token::StringConst(c))) = self.tokenizer.next() {
-                    self.vm_writer.write_push(Segment::CONSTANT, c.len());
-                    self.vm_writer.write_call("String.new", 1);
-                    for char in c.bytes() {
-                        self.vm_writer.write_push(Segment::CONSTANT, char.into());
-                        self.vm_writer.write_call("String.appendChar", 2);
-                    }
-                    println!("{t}");
+            Some(Token::StringConst(c)) => {
+                self.vm_writer.write_push(Segment::CONSTANT, c.len());
+                self.vm_writer.write_call("String.new", 1);
+                for char in c.bytes() {
+                    self.vm_writer.write_push(Segment::CONSTANT, char.into());
+                    self.vm_writer.write_call("String.appendChar", 2);
                 }
             }
 
-            Some(Token::Keyword("true" | "false" | "null" | "this")) => {
-                if let Some(Token::Keyword(c)) = self.tokenizer.next() {
-                    match c {
-                        "null" | "false" => self.vm_writer.write_push(Segment::CONSTANT, 0),
-                        "true" => {
-                            self.vm_writer.write_push(Segment::CONSTANT, 0);
-                            self.vm_writer.write_arithmetic(Arithmetic::NOT)
-                        }
-                        "this" => self.vm_writer.write_push(Segment::POINTER, 0),
-                        _ => {}
-                    }
-                    println!("{c}");
+            Some(Token::Keyword(c @ ("true" | "false" | "null" | "this"))) => match c {
+                "null" | "false" => self.vm_writer.write_push(Segment::CONSTANT, 0),
+                "true" => {
+                    self.vm_writer.write_push(Segment::CONSTANT, 0);
+                    self.vm_writer.write_arithmetic(Arithmetic::NOT)
                 }
-            }
+                "this" => self.vm_writer.write_push(Segment::POINTER, 0),
+                _ => {}
+            },
             Some(Token::Symbol('(')) => {
-                self.process(Token::Symbol('('));
                 self.compile_expression();
                 self.process(Token::Symbol(')'));
             }
-            Some(Token::Identifier(_)) => {
+            Some(Token::Identifier(ident)) => {
                 let mut subroutine_name = String::new();
-                let ident = if let Token::Identifier(ident) = self.tokenizer.next().unwrap() {
-                    ident
-                } else {
-                    panic!()
-                };
-
                 let index = self.index_of(ident);
                 let _type = self.type_of(ident);
-                let segment = self.kind_of(ident);
-                println!("<identifier>");
-                println!("<name>{ident}</name>");
-                println!("<usage>used</usage>");
-                if let Some(index) = index {
-                    println!("<index>{index}</index>");
-                }
+                let segment = self.kind_of(ident).map(category_to_segment);
                 if let Some(_type) = _type {
                     subroutine_name.push_str(_type.as_str());
-                    println!("<type>{_type}</type>");
                 } else {
                     subroutine_name.push_str(ident);
                 }
 
-                let segment = segment.map(|c| match c {
-                    SegmentKind::Static => Segment::STATIC,
-                    SegmentKind::Field => Segment::THIS,
-                    SegmentKind::Arg => Segment::ARGUMENT,
-                    SegmentKind::Var => Segment::LOCAL,
-                });
                 match self.tokenizer.peek() {
                     Some(Token::Symbol('[')) => {
-                        if let Some(segment) = segment {
-                            println!("<category>{segment}</category>");
-                        } else {
-                            println!("<category>error</category>");
-                        }
                         if let (Some(segment), Some(index)) = (segment, index) {
                             self.vm_writer.write_push(segment, index);
                         }
-                        println!("</identifier>");
                         self.process(Token::Symbol('['));
                         self.compile_expression();
                         self.vm_writer.write_arithmetic(Arithmetic::ADD);
@@ -660,12 +468,6 @@ where
                     Some(Token::Symbol('(' | '.')) => {
                         let mut n_args = 0;
                         if let Some(Token::Symbol('.')) = self.tokenizer.peek() {
-                            if let Some(segment) = segment {
-                                println!("<category>{segment}</category>");
-                            } else {
-                                println!("<category>class</category>");
-                            }
-                            println!("</identifier>");
                             subroutine_name.push('.');
                             self.process(Token::Symbol('.'));
 
@@ -673,24 +475,19 @@ where
                             match self.tokenizer.next() {
                                 Some(Token::Identifier(ident)) => {
                                     subroutine_name.push_str(ident);
-                                    println!("<identifier>");
-                                    println!("<name>{ident}</name>");
-                                    println!("<category>subroutine</category>");
-                                    println!("<usage>used</usage>");
-                                    println!("</identifier>");
                                 }
                                 _ => println!("error: syntax error"),
                             }
                         } else {
                             // subroutine() which is implicitly this.subroutine()
                             subroutine_name = format!("{}.{}", self.class_name, ident);
+                            // push `this` as receiver
                             self.vm_writer.write_push(Segment::POINTER, 0);
                             n_args += 1;
-                            println!("<category>subroutine</category>");
-                            println!("</identifier>");
                         }
 
                         self.process(Token::Symbol('('));
+                        // push the receiver
                         if let (Some(segment), Some(index)) = (segment, index) {
                             self.vm_writer.write_push(segment, index);
                             n_args += 1;
@@ -700,34 +497,26 @@ where
                         self.process(Token::Symbol(')'));
                     }
                     _ => {
+                        // variable
                         if let (Some(segment), Some(index)) = (segment, index) {
                             self.vm_writer.write_push(segment, index);
-                            println!("<category>{segment}</category>");
-                        } else {
-                            println!("<category>error</category>");
                         }
-                        println!("</identifier>");
                     }
                 }
             }
-            Some(s @ Token::Symbol('-' | '~')) => {
-                println!("{s}");
-                if let Some(Token::Symbol(op)) = self.tokenizer.next() {
-                    self.compile_term();
-                    match op {
-                        '-' => self.vm_writer.write_arithmetic(Arithmetic::NEG),
-                        '~' => self.vm_writer.write_arithmetic(Arithmetic::NOT),
-                        _ => {}
-                    }
+            Some(Token::Symbol(op @ ('-' | '~'))) => {
+                self.compile_term();
+                match op {
+                    '-' => self.vm_writer.write_arithmetic(Arithmetic::NEG),
+                    '~' => self.vm_writer.write_arithmetic(Arithmetic::NOT),
+                    _ => {}
                 }
             }
             _ => println!("error: syntax error"),
         }
-        println!("</term>");
     }
 
     pub fn compile_expression_list(&mut self) -> usize {
-        println!("<expressionList>");
         let mut count = 0;
         while let Some(token) = self.tokenizer.peek() {
             match *token {
@@ -739,17 +528,14 @@ where
                     count += 1;
                     self.compile_expression();
                 }
-                Token::Symbol(',') => {
-                    self.process(Token::Symbol(','));
-                }
+                Token::Symbol(',') => self.process(Token::Symbol(',')),
                 _ => break,
             }
         }
-        println!("</expressionList>");
         return count;
     }
 
-    fn kind_of(&self, name: &str) -> Option<SegmentKind> {
+    fn kind_of(&self, name: &str) -> Option<Category> {
         self.subroutine_symbol_table
             .kind_of(name)
             .or_else(|| self.class_symbol_table.kind_of(name))
@@ -767,12 +553,21 @@ where
             .or_else(|| self.class_symbol_table.index_of(name))
     }
 }
-fn get_segment_kind(str: &str) -> Option<SegmentKind> {
+fn get_category(str: &str) -> Option<Category> {
     match str {
-        "field" => Some(SegmentKind::Field),
-        "static" => Some(SegmentKind::Static),
-        "var" => Some(SegmentKind::Var),
-        "arg" => Some(SegmentKind::Arg),
+        "field" => Some(Category::Field),
+        "static" => Some(Category::Static),
+        "var" => Some(Category::Var),
+        "arg" => Some(Category::Arg),
         _ => None,
+    }
+}
+
+fn category_to_segment(category: Category) -> Segment {
+    match category {
+        Category::Static => Segment::STATIC,
+        Category::Field => Segment::THIS,
+        Category::Arg => Segment::ARGUMENT,
+        Category::Var => Segment::LOCAL,
     }
 }

@@ -2,31 +2,31 @@ use std::{collections::HashMap, fmt};
 
 pub struct SymbolTable {
     map: HashMap<String, Symbol>,
-    index_map: HashMap<SegmentKind, usize>,
+    index_map: HashMap<Category, usize>,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
-pub enum SegmentKind {
+pub enum Category {
     Static,
     Field,
     Arg,
     Var,
 }
 
-impl fmt::Display for SegmentKind {
+impl fmt::Display for Category {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SegmentKind::Static => write!(f, "static"),
-            SegmentKind::Field => write!(f, "field"),
-            SegmentKind::Arg => write!(f, "arg"),
-            SegmentKind::Var => write!(f, "var"),
+            Category::Static => write!(f, "static"),
+            Category::Field => write!(f, "field"),
+            Category::Arg => write!(f, "arg"),
+            Category::Var => write!(f, "var"),
         }
     }
 }
 
 struct Symbol {
     _type: String,
-    kind: SegmentKind,
+    kind: Category,
     index: usize,
 }
 
@@ -43,13 +43,13 @@ impl SymbolTable {
     }
 
     pub fn reset(&mut self) {
-        self.index_map.insert(SegmentKind::Static, 0);
-        self.index_map.insert(SegmentKind::Field, 0);
-        self.index_map.insert(SegmentKind::Arg, 0);
-        self.index_map.insert(SegmentKind::Var, 0);
+        self.index_map.insert(Category::Static, 0);
+        self.index_map.insert(Category::Field, 0);
+        self.index_map.insert(Category::Arg, 0);
+        self.index_map.insert(Category::Var, 0);
     }
 
-    pub fn define(&mut self, name: &str, _type: &str, kind: SegmentKind) {
+    pub fn define(&mut self, name: &str, _type: &str, kind: Category) {
         let index = self.var_count(kind);
         let symbol = Symbol {
             _type: String::from(_type),
@@ -60,11 +60,11 @@ impl SymbolTable {
         self.index_map.insert(kind, index + 1);
     }
 
-    pub fn var_count(&self, kind: SegmentKind) -> usize {
+    pub fn var_count(&self, kind: Category) -> usize {
         *self.index_map.get(&kind).unwrap()
     }
 
-    pub fn kind_of(&self, name: &str) -> Option<SegmentKind> {
+    pub fn kind_of(&self, name: &str) -> Option<Category> {
         self.map.get(name).map(|s| s.kind)
     }
 

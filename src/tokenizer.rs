@@ -1,5 +1,4 @@
 use std::{
-    fmt::{self},
     iter::{Enumerate, Peekable},
     str::Bytes,
 };
@@ -22,34 +21,6 @@ impl<'a> Tokenizer<'a> {
             state: State::Code,
         };
         Ok(tokenizer)
-    }
-}
-
-impl<'a> fmt::Display for Token<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Token::Keyword(s) => write!(f, "<keyword> {s} </keyword>"),
-            Token::Symbol(c) => write!(f, "<symbol> {} </symbol>", escape_xml_char(*c)),
-            Token::Identifier(s) => write!(f, "<identifier> {s} </identifier>"),
-            Token::IntConstant(n) => write!(f, "<integerConstant> {n} </integerConstant>"),
-            Token::StringConst(s) => write!(f, "<stringConstant> {s} </stringConstant>"),
-            Token::Whitespace(c) => write!(f, "<whitespace> {c} </whitespace>"),
-            Token::SingleLineComment(s) => {
-                write!(f, "<singleLineComment> {s} </singleLineComment>")
-            }
-            Token::BlockComment(s) => write!(f, "<blockComment> {s} </blockComment>"),
-            Token::Invalid(s) => write!(f, "<invalid> {s} </invalid>"),
-        }
-    }
-}
-
-fn escape_xml_char(c: char) -> String {
-    match c {
-        '<' => "&lt;".to_string(),
-        '>' => "&gt;".to_string(),
-        '"' => "&quot;".to_string(),
-        '&' => "&amp;".to_string(),
-        _ => c.to_string(),
     }
 }
 
