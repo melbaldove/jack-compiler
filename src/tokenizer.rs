@@ -53,7 +53,7 @@ fn escape_xml_char(c: char) -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Token<'a> {
     Keyword(&'a str),
     Symbol(char),
