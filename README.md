@@ -1,7 +1,6 @@
 # jack-compiler
 
-Compiles Jack to Hack VM commands.
-
+Jack compiler for the Hack virtual machine.
 
 ### Usage
 Run with cargo:
@@ -10,11 +9,11 @@ cargo run -- <file_name>.jack
 # or
 cargo run -- <dir> # translates <dir>/*.jack to <dir>/*.vm
 ```
-See the `samples` directory for some sample .jack programs.
 ### Examples
 ```bash
 cargo run -- samples/ComplexArrays/Main.jack
 ```
+See the `samples` directory for more interesting .jack programs e.g. Pong.  
 #### Main.jack
 ``` java
 class Main {
@@ -79,6 +78,9 @@ class Main {
 }
 
 ```
+### Output
+<img width="516" alt="image" src="https://github.com/melbaldove/jack-compiler/assets/18225174/5d8b6d8d-7ba3-4085-8d0c-43b83ef261cf">
+
 #### Main.vm
 ```
 function Main.main 3
@@ -133,7 +135,7 @@ add
 ```
 
 ### Simulator
-A VM simulator for the Hack VM is available [here](https://www.nand2tetris.org/software).
+A VM simulator for Hack virtual machine is available [here](https://www.nand2tetris.org/software).
 
 ### Documentation
-See Chapter 9-11 of [The Elements of Computing Systems: Building a Modern Computer from First Principles](https://www.amazon.com/Elements-Computing-Systems-Building-Principles/dp/0262640686) for the full specification of Jack
+See Chapter 9-11 of [The Elements of Computing Systems: Building a Modern Computer from First Principles](https://www.amazon.com/Elements-Computing-Systems-Building-Principles/dp/0262640686) for the full specification of the Jack programming language.
